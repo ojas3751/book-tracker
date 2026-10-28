@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>本棚 - book-tracker モック</title>
   <link rel="stylesheet" href="style.css">
+  <script>
+    // 表示の色の設定を、画面が出る前に当てる（自動のときは端末の設定に任せる）
+    try { const t = localStorage.getItem('mock.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* 何もしない */ }
+  </script>
 </head>
 <body>
   <div class="app" id="app">

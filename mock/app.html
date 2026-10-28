@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>本棚 - book-tracker モック</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <aside class="sidebar" id="sidebar" aria-label="メニュー"></aside>
+    <div id="drawer-backdrop" data-action="drawer-close"></div>
+    <div class="main-wrap">
+      <header class="topbar" id="topbar"></header>
+      <main id="main"></main>
+    </div>
+  </div>
+  <div id="sheet-backdrop" data-action="close-top"></div>
+  <div id="layers"></div>
+  <div id="dialog" role="dialog" aria-modal="true"></div>
+  <div id="toast" role="status"></div>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ログイン - book-tracker モック</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="login">
+    <form class="login-card" id="login-form" novalidate>
+      <h1>book-tracker</h1>
+      <p class="sub">シリーズ単位で新刊を追う読書管理（モック）</p>
+      <div class="field">
+        <label class="field-label" for="login-id">ID</label>
+        <input class="input" id="login-id" name="id" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label class="field-label" for="login-pass">パスワード</label>
+        <input class="input" id="login-pass" name="pass" type="password" autocomplete="current-password" required>
+      </div>
+      <p class="login-error" id="login-error" role="alert"></p>
+      <button class="btn btn-primary" type="submit">ログイン</button>
+      <p class="login-hint">モックのため、ID・パスワードとも admin で入れます</p>
+    </form>
+  </div>
+  <script>
+    // 見せかけのログイン。ID・パスワードとも admin なら通す
+    document.getElementById('login-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const id = document.getElementById('login-id').value.trim();
+      const pass = document.getElementById('login-pass').value;
+      if (id === 'admin' && pass === 'admin') {
+        try { sessionStorage.setItem('mock.login', '1'); } catch (err) { /* 保存できなくても先へ進める */ }
+        location.href = 'app.html';
+      } else {
+        document.getElementById('login-error').textContent = 'IDまたはパスワードが違います';
+      }
+    });
+  </script>
+</body>
+</html>

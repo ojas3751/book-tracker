@@ -469,6 +469,10 @@ main { padding: 12px 16px 96px; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 26px 0 10px; }
 .section-head h3 { margin: 0; font-size: 15px; }
 .section-head h3 .count { color: var(--text-3); font-weight: 400; margin-left: 4px; }
+.section-tools { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.fold { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 4px 0; cursor: pointer; color: var(--text); }
+.fold svg { color: var(--text-2); transition: transform 0.15s; transform: rotate(-90deg); }
+.fold[aria-expanded="true"] svg { transform: none; }
 
 .carry {
   display: flex;

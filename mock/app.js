@@ -58,6 +58,7 @@
     edit: '<path d="M4 20h4L19 9l-4-4L4 16v4z"/>',
     track: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
     filter: '<path d="M4 5h16l-6 8v5l-4 2v-7z"/>',
+    chevron: '<path d="M6 9l6 6 6-6"/>',
   };
   const svg = (paths, size) =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -68,6 +69,8 @@
       shelf: pref.get('mock.view.shelf', 'grid'),
       series: pref.get('mock.view.series', 'grid'),
     },
+    volOrder: pref.get('mock.vol.order', 'desc'), // シリーズページの巻の並び（発売日の新しい順／古い順）
+    candsOpen: pref.get('mock.cands.open', '1') === '1', // シリーズページの新刊候補を開いているか
     sort: 'date-desc',
     q: '',
     filters: { read: new Set(), purchase: new Set(), media: new Set(), tracking: false, tags: new Set(), tagMode: 'and' },
@@ -517,7 +520,10 @@
     const open = state.layers.length > 0;
     document.documentElement.classList.toggle('locked', open && mode !== 'panel');
     $('#app').classList.toggle('with-panel', open && mode === 'panel');
-    $('#sheet-backdrop').classList.toggle('show', open && mode === 'sheet');
+    // 幕は一番上のシートのすぐ下に置き、後ろのページ（シートを重ねたときは下のシート）を押せないようにする
+    const backdrop = $('#sheet-backdrop');
+    backdrop.classList.toggle('show', open && mode === 'sheet');
+    backdrop.style.zIndex = open ? 100 + (state.layers.length - 1) * 2 - 1 : '';
     setTimeout(checkMore, 300); // パネルの開け閉めで一覧の幅が変わるため
   }
 
@@ -549,8 +555,19 @@
     const s = seriesById(L.id);
     const st = seriesStats(s);
     const carry = L.carry && filterActive();
-    const books = carry ? st.books.filter(bookMatches) : st.books;
+    const dir = state.volOrder === 'asc' ? 1 : -1;
+    const books = (carry ? st.books.filter(bookMatches) : st.books)
+      .slice()
+      .sort((a, b) => dir * (a.salesDate.localeCompare(b.salesDate) || (a.volume ?? 0) - (b.volume ?? 0)));
     const cands = candidatesOf(s.id);
+    const orderSeg = `<div class="seg seg-sm" role="group" aria-label="巻の並び">
+        <button data-action="vol-order" data-v="desc" aria-pressed="${state.volOrder === 'desc'}">新しい順</button>
+        <button data-action="vol-order" data-v="asc" aria-pressed="${state.volOrder === 'asc'}">古い順</button>
+      </div>`;
+    // 候補が多いと巻の一覧が遠くなるので、見出しを押して畳めるようにする
+    const candsHead = cands.length
+      ? `<button class="fold" data-action="toggle-cands" aria-expanded="${state.candsOpen}"><h3>新刊候補<span class="count">未判定 ${cands.length}件</span></h3>${svg(ICON.chevron, 18)}</button>`
+      : '<h3>新刊候補<span class="count">未判定 0件</span></h3>';
     return `
       <dl class="info">
         <dt>著者</dt><dd>${esc(s.author)}</dd>
@@ -564,11 +581,11 @@
         <button class="btn btn-primary" data-action="search-new">新刊を検索</button>
         <button class="btn" data-action="add-book" data-series="${s.id}">${svg(ICON.plus, 16)}本を登録</button>
       </div>
-      ${carry ? `<div class="carry"><span>本棚の絞り込みを引き継いでいます（${books.length}/${st.books.length}冊）</span><button class="btn btn-ghost btn-sm" data-action="carry-off">解除</button></div>` : ''}
-      <div class="section-head"><h3>登録している巻<span class="count">${books.length}冊</span></h3>${viewSeg('series', true)}</div>
-      ${volumesHTML(books)}
-      <div class="section-head"><h3>新刊候補<span class="count">未判定 ${cands.length}件</span></h3></div>
-      ${cands.length ? cands.map((c) => candHTML(c, s)).join('') : '<p class="none">未判定の候補はありません</p>'}`;
+      <div class="section-head">${candsHead}</div>
+      ${cands.length && state.candsOpen ? cands.map((c) => candHTML(c, s)).join('') : ''}
+      <div class="section-head"><h3>登録している巻<span class="count">${books.length}冊</span></h3><div class="section-tools">${orderSeg}${viewSeg('series', true)}</div></div>
+      ${carry ? `<div class="carry" style="margin:0 0 12px"><span>本棚の絞り込みを引き継いでいます（${books.length}/${st.books.length}冊）</span><button class="btn btn-ghost btn-sm" data-action="carry-off">解除</button></div>` : ''}
+      ${volumesHTML(books)}`;
   }
 
   function volumesHTML(books) {
@@ -827,6 +844,17 @@
       else openFromShelf({ type: 'book', id: el.dataset.id });
     },
     'close-top'() { closeTop(); },
+
+    'vol-order'(el) {
+      state.volOrder = el.dataset.v;
+      pref.set('mock.vol.order', state.volOrder);
+      state.layers.forEach((L, i) => { if (L.type === 'series' && !L.edit) refreshLayer(i); });
+    },
+    'toggle-cands'(el) {
+      state.candsOpen = !state.candsOpen;
+      pref.set('mock.cands.open', state.candsOpen ? '1' : '0');
+      refreshLayer(depthOf(el));
+    },
 
     'carry-off'(el) {
       const i = depthOf(el);

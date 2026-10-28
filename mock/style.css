@@ -13,11 +13,59 @@
   --warn: #a35f00;
   --star-on: #e0a100;
   --star-off: #d8d4cc;
+  --on-accent: #ffffff;
+  --variant-bg: #f3e8d4;
+  --variant-text: #7a4d00;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.14);
   --radius: 10px;
   --sidebar-w: 232px;
   --panel-w: min(520px, 46vw);
   --topbar-h: 56px;
+  color-scheme: light;
+}
+
+/* ダークモード：設定が「自動」なら端末に合わせ、「ダーク」なら常にダークにする */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161514;
+    --surface: #201f1d;
+    --surface-2: #2b2926;
+    --text: #ecebe7;
+    --text-2: #b4afa7;
+    --text-3: #8a857d;
+    --line: #363431;
+    --accent: #8ab4e0;
+    --accent-weak: #233241;
+    --danger: #e57366;
+    --warn: #e3a548;
+    --star-on: #f0b400;
+    --star-off: #4a4743;
+    --on-accent: #0f1c29;
+    --variant-bg: #3a2e1a;
+    --variant-text: #f0c47a;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161514;
+  --surface: #201f1d;
+  --surface-2: #2b2926;
+  --text: #ecebe7;
+  --text-2: #b4afa7;
+  --text-3: #8a857d;
+  --line: #363431;
+  --accent: #8ab4e0;
+  --accent-weak: #233241;
+  --danger: #e57366;
+  --warn: #e3a548;
+  --star-on: #f0b400;
+  --star-off: #4a4743;
+  --on-accent: #0f1c29;
+  --variant-bg: #3a2e1a;
+  --variant-text: #f0c47a;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -53,8 +101,8 @@ button { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 .btn:hover { background: var(--surface-2); }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn-primary:hover { background: #274f76; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { background: color-mix(in srgb, var(--accent) 85%, var(--text)); }
 .btn-danger { color: var(--danger); }
 .btn-ghost { border-color: transparent; background: transparent; color: var(--accent); }
 .btn-ghost:hover { background: var(--accent-weak); }
@@ -127,7 +175,8 @@ button { font: inherit; color: inherit; }
   min-width: 20px;
   text-align: center;
 }
-.sidebar-foot { margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--line); }
+.sidebar-foot { margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.theme-switch { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-2); }
 
 #drawer-backdrop {
   position: fixed;
@@ -151,7 +200,7 @@ button { font: inherit; color: inherit; }
   align-items: center;
   gap: 8px;
   padding: 0 8px 0 8px;
-  background: rgba(246, 245, 242, 0.92);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
@@ -232,7 +281,7 @@ main { padding: 12px 16px 96px; }
   color: var(--text-2);
   cursor: pointer;
 }
-.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .chip-sep { flex: none; width: 1px; background: var(--line); margin: 4px 2px; }
 .chip-clear { color: var(--danger); border-style: dashed; }
 
@@ -496,7 +545,7 @@ main { padding: 12px 16px 96px; }
 .cand-btns { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; }
 .tag-new { background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: 2px; }
 .label-cat { font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-2); }
-.label-variant { background: #f3e8d4; color: #7a4d00; }
+.label-variant { background: var(--variant-bg); color: var(--variant-text); }
 .none { color: var(--text-3); font-size: 14px; }
 
 .bp-top { display: grid; grid-template-columns: 112px 1fr; gap: 16px; align-items: start; }
@@ -576,8 +625,8 @@ main { padding: 12px 16px 96px; }
   left: 50%;
   bottom: 24px;
   transform: translate(-50%, 16px);
-  background: #262523;
-  color: #fff;
+  background: var(--text);
+  color: var(--bg);
   padding: 10px 16px;
   border-radius: 8px;
   font-size: 13px;

@@ -68,6 +68,7 @@
       shelf: pref.get('mock.view.shelf', 'grid'),
       series: pref.get('mock.view.series', 'grid'),
     },
+    theme: pref.get('mock.theme', 'auto'), // auto（端末に合わせる）／light／dark
     volOrder: pref.get('mock.vol.order', 'desc'), // シリーズページの巻の並び（発売日の新しい順／古い順）
     candsOpen: pref.get('mock.cands.open', '1') === '1', // シリーズページの新刊候補を開いているか
     sort: 'date-desc',
@@ -248,7 +249,12 @@
       `<button class="${state.screen === screen ? 'active' : ''}" data-action="nav" data-screen="${screen}"><span>${TITLES[screen]}</span>${extra || ''}</button>`;
     $('#sidebar').innerHTML = `<div class="brand">book-tracker<small>モック</small></div>
       <nav class="nav">${item('shelf')}${item('register')}${item('candidates', n ? `<span class="badge">${n}</span>` : '')}${item('settings')}</nav>
-      <div class="sidebar-foot"><button class="btn btn-sm" data-action="logout">ログアウト</button></div>`;
+      <div class="sidebar-foot">
+        <div class="theme-switch"><span>表示の色</span><div class="seg seg-sm" role="group" aria-label="表示の色">
+          ${[['auto', '自動'], ['light', 'ライト'], ['dark', 'ダーク']].map(([v, l]) => `<button data-action="theme" data-v="${v}" aria-pressed="${state.theme === v}">${l}</button>`).join('')}
+        </div></div>
+        <button class="btn btn-sm" data-action="logout">ログアウト</button>
+      </div>`;
   }
 
   function renderTopbar() {
@@ -743,6 +749,14 @@
       renderTopbar();
       renderScreen();
       window.scrollTo(0, 0);
+    },
+
+    theme(el) {
+      state.theme = el.dataset.v;
+      pref.set('mock.theme', state.theme);
+      if (state.theme === 'auto') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.dataset.theme = state.theme;
+      renderSidebar();
     },
 
     logout() {

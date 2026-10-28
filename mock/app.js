@@ -64,7 +64,6 @@
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 
   const state = {
-    ui: pref.get('mock.ui', 'a'),
     view: {
       shelf: pref.get('mock.view.shelf', 'grid'),
       series: pref.get('mock.view.series', 'grid'),
@@ -254,11 +253,7 @@
 
   function renderTopbar() {
     $('#topbar').innerHTML = `<button class="icon-btn menu-btn" data-action="drawer" aria-label="メニューを開く">${svg(ICON.menu, 22)}</button>
-      <h1>${TITLES[state.screen]}</h1>
-      <div class="ui-switch"><span>UI案</span><div class="seg seg-sm" role="group" aria-label="UI案の切り替え">
-        <button data-action="ui" data-v="a" aria-pressed="${state.ui === 'a'}" title="A：全画面で重ねる">A</button>
-        <button data-action="ui" data-v="b" aria-pressed="${state.ui === 'b'}" title="B：PCは横のパネル、スマホはボトムシート">B</button>
-      </div></div>`;
+      <h1>${TITLES[state.screen]}</h1>`;
     document.title = `${TITLES[state.screen]} - book-tracker モック`;
   }
 
@@ -275,7 +270,7 @@
   }
 
   // ---------- 本棚 ----------
-  function chipsHTML(grouped) {
+  function chipsHTML() {
     const f = state.filters;
     const chip = (group, v, label, on) =>
       `<button class="chip" data-action="chip" data-group="${group}" data-v="${v}" aria-pressed="${on}">${esc(label)}</button>`;
@@ -291,11 +286,8 @@
       )],
     ];
     const clear = filterCount() ? '<button class="chip chip-clear" data-action="chip-clear">クリア</button>' : '';
-    if (grouped) {
-      return groups.map(([h, cs]) => `<div class="filter-group"><h4>${h}</h4><div class="chips">${cs.join('')}</div></div>`).join('') +
-        (clear ? `<div class="chips">${clear}</div>` : '');
-    }
-    return clear + groups.map(([, cs]) => cs.join('')).join('<span class="chip-sep"></span>');
+    return groups.map(([h, cs]) => `<div class="filter-group"><h4>${h}</h4><div class="chips">${cs.join('')}</div></div>`).join('') +
+      (clear ? `<div class="chips">${clear}</div>` : '');
   }
 
   function renderShelf() {
@@ -304,9 +296,8 @@
         <label class="search">${svg(ICON.search, 18)}<input id="q" type="search" placeholder="タイトル・著者・シリーズ名で検索" value="${esc(state.q)}" autocomplete="off"></label>
         <select id="sort" aria-label="並べ替え">${SORTS.map(([v, l]) => `<option value="${v}"${state.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
         ${viewSeg('shelf')}
-        ${state.ui === 'b' ? `<button class="btn" data-action="open-filter" id="filter-btn">${svg(ICON.filter, 16)}<span></span></button>` : ''}
+        <button class="btn" data-action="open-filter" id="filter-btn">${svg(ICON.filter, 16)}<span></span></button>
       </div>
-      ${state.ui === 'a' ? `<div class="chips" id="chips">${chipsHTML(false)}</div>` : ''}
       <div class="shelf-sub"><span id="shelf-count"></span><button class="btn btn-ghost btn-sm" data-action="bulk-search">全体一括で新刊を検索</button></div>
       <div id="shelf-box"></div>
       <div id="shelf-more"></div>`;
@@ -441,21 +432,15 @@
   }
 
   function refreshFilters() {
-    const chips = $('#chips');
-    if (chips) {
-      const left = chips.scrollLeft;
-      chips.innerHTML = chipsHTML(false);
-      chips.scrollLeft = left;
-    }
     const panel = $('#filter-panel');
-    if (panel) panel.innerHTML = chipsHTML(true);
+    if (panel) panel.innerHTML = chipsHTML();
     updateFilterButton();
     updateShelfItems(false);
   }
 
   // ---------- 重ねるページ（シリーズページ・ブックページ） ----------
-  // 案A：全画面、案B：PCは右のパネル・スマホはボトムシート
-  const layerMode = () => (state.ui === 'a' ? 'full' : isPC() ? 'panel' : 'sheet');
+  // PCは右のパネル、スマホはボトムシート（要件定義書 4.7）
+  const layerMode = () => (isPC() ? 'panel' : 'sheet');
 
   function openLayer(layer) {
     if (state.layers.length >= 2) return; // 重ねるのは2枚まで（要件定義書 4.7）
@@ -465,7 +450,7 @@
     syncChrome();
   }
 
-  // 本棚から開くとき。案BのPCでは一覧が見えたままなので、パネルの中身を差し替える
+  // 本棚から開くとき。PCでは一覧が見えたままなので、パネルの中身を差し替える
   function openFromShelf(layer) {
     if (layerMode() === 'panel' && state.layers.length) {
       if (state.layers.length > 1) history.back();
@@ -527,7 +512,7 @@
     setTimeout(checkMore, 300); // パネルの開け閉めで一覧の幅が変わるため
   }
 
-  // 案や画面幅が変わったときに、今の方式で作り直す
+  // 画面幅がPCとスマホの境目をまたいだときに、今の方式で作り直す
   function rebuildLayers() {
     state.layers.forEach((L) => L.node && L.node.remove());
     state.layers.forEach((L, i) => mountLayer(i));
@@ -537,7 +522,7 @@
   function layerInner(L, i) {
     const mode = layerMode();
     const entity = L.type === 'series' ? seriesById(L.id) : bookById(L.id);
-    const backIcon = mode === 'full' || i > 0 ? ICON.back : ICON.close;
+    const backIcon = i > 0 ? ICON.back : ICON.close;
     const title = !entity ? '' : L.edit ? (L.type === 'series' ? 'シリーズ情報の編集' : 'ブックページの編集') : L.type === 'series' ? entity.name : entity.title;
     const head = `${mode === 'sheet' ? '<div class="sheet-handle" data-drag></div>' : ''}
       <header class="layer-head"${mode === 'sheet' ? ' data-drag' : ''}>
@@ -765,15 +750,6 @@
       location.href = 'index.html';
     },
 
-    ui(el) {
-      state.ui = el.dataset.v;
-      pref.set('mock.ui', state.ui);
-      renderTopbar();
-      if (state.screen === 'shelf') renderShelf();
-      rebuildLayers();
-      toast(state.ui === 'a' ? 'UI案A：ページを全画面で重ねます' : 'UI案B：PCは右のパネル、スマホはボトムシートで開きます');
-    },
-
     view(el) {
       const { screen, v } = el.dataset;
       state.view[screen] = v;
@@ -802,7 +778,7 @@
       refreshFilters();
     },
     'open-filter'() {
-      openDialog(`<h3>絞り込み</h3><div id="filter-panel" style="margin-top:12px">${chipsHTML(true)}</div>
+      openDialog(`<h3>絞り込み</h3><div id="filter-panel" style="margin-top:12px">${chipsHTML()}</div>
         <div class="dialog-btns"><button class="btn btn-primary" data-action="dialog">閉じる</button></div>`);
     },
 
@@ -1054,7 +1030,7 @@
     if (pc !== lastPC) {
       lastPC = pc;
       $('#app').classList.remove('drawer-open');
-      if (state.layers.length && state.ui === 'b') rebuildLayers();
+      if (state.layers.length) rebuildLayers();
       else syncChrome();
     }
     checkMore();

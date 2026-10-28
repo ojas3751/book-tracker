@@ -157,8 +157,6 @@ button { font: inherit; color: inherit; }
 }
 .topbar h1 { font-size: 17px; margin: 0 0 0 4px; flex: 1; }
 
-.ui-switch { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); padding-right: 8px; }
-
 main { padding: 12px 16px 96px; }
 
 @media (min-width: 900px) {
@@ -168,7 +166,7 @@ main { padding: 12px 16px 96px; }
   #drawer-backdrop { display: none; }
   .topbar { padding-left: 16px; }
   main { padding: 16px 24px 96px; }
-  /* 案B（PC）：一覧の右にパネルを出し、一覧を狭める */
+  /* 一覧の右にパネルを出し、一覧を狭める */
   .app.with-panel .main-wrap { margin-right: var(--panel-w); }
 }
 
@@ -306,7 +304,7 @@ main { padding: 12px 16px 96px; }
 .badge-count {
   position: absolute;
   top: 6px;
-  left: 6px;
+  right: 6px;
   background: rgba(0, 0, 0, 0.74);
   color: #fff;
   font-size: 11px;
@@ -432,15 +430,11 @@ main { padding: 12px 16px 96px; }
 .layer-head h2 { flex: 1; font-size: 16px; margin: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px 40px; }
 
-/* 案A：全画面で重ねる */
-.layer-full { inset: 0; transform: translateX(100%); box-shadow: none; }
-.layer-full.open { transform: none; }
-
-/* 案B（PC）：右のパネル */
+/* PC：右のパネル */
 .layer-panel { top: 0; right: 0; bottom: 0; width: var(--panel-w); transform: translateX(100%); border-left: 1px solid var(--line); }
 .layer-panel.open { transform: none; }
 
-/* 案B（スマホ）：ボトムシート */
+/* スマホ：ボトムシート */
 .layer-sheet { left: 0; right: 0; bottom: 0; height: 74dvh; border-radius: 16px 16px 0 0; transform: translateY(100%); }
 .layer-sheet[data-depth="1"] { height: 84dvh; }
 .layer-sheet.open { transform: none; }

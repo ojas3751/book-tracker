@@ -96,6 +96,9 @@
 - タイトル、著者、ISBNで外部APIを検索し、結果から選んで登録する
 - 検索画面に「コミックのみ」のチェックボックスを置く（`booksGenreId=001001` で絞る）
 - 検索結果のうち登録済みの本には「登録済み」の目印を付け、押すとその本のブックページを開く
+- 外部APIで見つからない本（同人誌、ISBNのない古い本など）は、書誌情報を手で入力して登録できる
+  - 手で入力した本は、その人だけのデータとして扱い、ほかのユーザーと共有しない
+  - 手で入力した本の書誌情報は、ブックページの編集モードで直せる
 - 登録時に設定できる項目
   - シリーズ（既存を選ぶ／新規に作る／なし）
   - 巻数
@@ -191,7 +194,7 @@
 
 | 判定 | 内容 |
 |---|---|
-| 登録済み | ISBNが `user_books` にある |
+| 登録済み | ISBNが自分の本棚の本と一致する |
 | 記録済み | ISBNが `release_candidates` にある（状態は問わない）。同じ候補を二重に記録しないための除外で、未判定の候補は引き続き表示する |
 | 著者の不一致 | 正規化した著者名に、シリーズの著者が含まれない |
 | タイトルの不一致 | 正規化したタイトルにも `seriesName` にも、検索キーワードが含まれない |
@@ -251,7 +254,7 @@
 
 **本の削除**
 - ブックページの［削除］で、確認してから削除する
-- 削除するのは自分の登録データ（`user_books`、`user_book_tags`）だけで、共有の書誌データ（`books`）は残す
+- 削除するのは自分の登録データ（`user_books`、`user_book_tags`）だけで、共有の書誌データ（`books`）は残す。ただし手で入力した本は共有していないので、書誌データも削除する
 - その本の新刊候補の記録（`release_candidates`）も削除する。削除は「管理をやめる」ことなので、新刊検索でまた候補に出るようにする（関係ない本を出さないようにするのは「対象外」の役割）
 
 **シリーズの削除**
@@ -354,16 +357,18 @@
 ## 5. データモデル（案）
 
 ```
-books              : isbn (PK), title, sub_title, series_name, authors,
+books              : id (PK), isbn (null可, 一意), title, sub_title, series_name, authors,
                      title_kana, author_kana, publisher,
                      sales_date_raw, sales_date, size, genre_id,
-                     cover_url, item_url, source
+                     cover_url, item_url,
+                     source (rakuten/google/openbd/ndl/manual),
+                     owner_user_id (手で入力した本だけ。APIから取った本は null)
 
 series             : id (PK), user_id, name, name_kana, search_keyword, author_key,
                      preferred_format (any/tankobon/bunko/shinsho/comic),
                      tracking (bool), last_checked_at
 
-user_books         : user_id, isbn, series_id, volume,
+user_books         : user_id, book_id, series_id, volume,
                      read_status (tsundoku/reading/finished, null可),
                      purchase_status (purchased/planned/skip),
                      format (paper/ebook, null可),
@@ -372,9 +377,9 @@ user_books         : user_id, isbn, series_id, volume,
 
 tags               : id (PK), user_id, name, kind (store/general), sort_order
 
-user_book_tags     : user_id, isbn, tag_id
+user_book_tags     : user_id, book_id, tag_id
 
-release_candidates : user_id, series_id, isbn, found_at,
+release_candidates : user_id, series_id, book_id, found_at,
                      category (new/backlist/variant),
                      state (new/added/dismissed),
                      dismiss_reason, dismissed_at
@@ -382,7 +387,9 @@ release_candidates : user_id, series_id, isbn, found_at,
 settings           : user_id, show_missing_backlist (bool, 既定 false)
 ```
 
-- 書誌データ（`books`）はユーザー間で共有、それ以外はユーザー別のデータとして分ける
+- 書誌データ（`books`）はユーザー間で共有、それ以外はユーザー別のデータとして分ける。ただし手で入力した本（`source` が `manual`）は、`owner_user_id` の人だけのデータにする
+- 本は `id` で見分ける。ISBNのない本（手で入力した本）があるため、ISBNは主キーにしない。ISBNがある本は、ISBNで重複を防ぐ
+- 新刊候補はAPIから取るので、必ずISBNがある
 - 全テーブルに `user_id` を持たせ、当面は固定のIDを入れる
 - `read_status`、`format`、`store_tag_id` は購入済みのときだけ値を入れる
 

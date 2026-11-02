@@ -163,5 +163,32 @@
     });
   });
 
-  window.MOCK_DATA = { today: TODAY, tags, series, books, candidates };
+  // 本の登録の検索でだけ見つかる、まだ登録していない本（外部APIの代わり）
+  // タイトル, 著者, 出版社, size, 巻数（1なら巻数なし）, 最新巻の発売日, 刊行の間隔（月）
+  const extraSpecs = [
+    ['ワンパンマン', 'ONE／村田雄介', '集英社', 9, 32, '2026-07-03', 4],
+    ['進撃の巨人', '諫山創', '講談社', 9, 34, '2021-06-09', 4],
+    ['鬼滅の刃', '吾峠呼世晴', '集英社', 9, 23, '2020-12-04', 3],
+    ['僕のヒーローアカデミア', '堀越耕平', '集英社', 9, 42, '2025-04-04', 3],
+    ['薬屋のひとりごと', 'ねこクラゲ／日向夏', 'スクウェア・エニックス', 9, 14, '2026-06-25', 5],
+    ['本好きの下剋上 第一部', '鈴華／香月美夜', 'TOブックス', 9, 7, '2022-03-15', 6],
+    ['ハイキュー!! ショーセツバン!!', '古舘春一／星希代子', '集英社', 2, 12, '2020-10-02', 4],
+    ['成瀬は信じた道をいく', '宮島未奈', '新潮社', 1, 1, '2024-01-24', 0],
+    ['傲慢と善良', '辻村深月', '朝日新聞出版', 2, 1, '2022-09-07', 0],
+    ['三体0 球状閃電', '劉慈欣', '早川書房', 1, 1, '2022-12-07', 0],
+  ];
+  const catalogExtras = [];
+  extraSpecs.forEach(([title, author, publisher, size, vols, last, interval], i) => {
+    const color = COLORS[(i * 7 + 1) % COLORS.length];
+    for (let v = 1; v <= vols; v++) {
+      const date = addMonths(last, (v - vols) * interval);
+      catalogExtras.push({
+        title: vols > 1 ? `${title}（${v}）` : title, author, publisher, size, color,
+        salesDate: date, salesDateRaw: rawDate(date, date > TODAY), isbn: isbn(),
+        seriesId: null, volume: vols > 1 ? v : null, source: 'rakuten',
+      });
+    }
+  });
+
+  window.MOCK_DATA = { today: TODAY, tags, series, books, candidates, catalogExtras };
 })();

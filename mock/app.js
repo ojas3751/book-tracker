@@ -67,6 +67,7 @@
     view: {
       shelf: pref.get('mock.view.shelf', 'grid'),
       series: pref.get('mock.view.series', 'grid'),
+      register: pref.get('mock.view.register', 'list'),
     },
     theme: pref.get('mock.theme', 'auto'), // auto（端末に合わせる）／light／dark
     volOrder: pref.get('mock.vol.order', 'desc'), // シリーズページの巻の並び（発売日の新しい順／古い順）
@@ -76,9 +77,9 @@
     filters: { read: new Set(), purchase: new Set(), media: new Set(), tracking: false, tags: new Set(), tagMode: 'and' },
     screen: 'shelf',
     layers: [], // { type: 'series' | 'book', id, carry, edit, draft, node }
-    entries: [],
-    shelfShown: 0,
-    loading: false,
+    pager: null, // 今の画面で少しずつ表示している一覧
+    reg: { field: 'title', q: '', comicOnly: false, searched: false, results: [], fetched: 0, preset: null }, // 本の登録の画面の状態
+    afterPop: null, // 重ねたページが閉じたあとに行う処理
     dialogClose: null,
   };
 
@@ -202,6 +203,8 @@
   // ---------- 部品 ----------
   function coverHTML(item, size) {
     if (!item) return `<div class="cover cover-${size}"></div>`;
+    // 手で入力した本で、表紙の画像をアップロードしたもの
+    if (item.coverUrl) return `<div class="cover cover-${size} cover-img" style="background-image:url('${esc(item.coverUrl)}')"></div>`;
     const s = item.seriesId ? seriesById(item.seriesId) : null;
     return `<div class="cover cover-${size}" style="--c:${item.color}"><span class="cover-title">${esc(s ? s.name : item.title)}</span>${
       item.volume != null ? `<span class="cover-vol">${item.volume}</span>` : ''
@@ -268,11 +271,205 @@
       renderShelf();
       return;
     }
+    if (state.screen === 'register') {
+      renderRegister();
+      return;
+    }
+    state.pager = null;
     $('#main').innerHTML = `<div class="placeholder">
-        <p><strong>${TITLES[state.screen]}</strong>の画面は、今回のモックの対象外です。</p>
-        <p>今回の範囲は「本棚 → シリーズページ → ブックページ」です。</p>
+        <p><strong>${TITLES[state.screen]}</strong>の画面は、まだモックを作っていません。</p>
         <button class="btn" data-action="nav" data-screen="shelf">本棚に戻る</button>
       </div>`;
+  }
+
+  function navigate(screen) {
+    closeAll();
+    state.screen = screen;
+    $('#app').classList.remove('drawer-open');
+    renderSidebar();
+    renderTopbar();
+    renderScreen();
+    window.scrollTo(0, 0);
+  }
+
+  // ---------- 本の登録 ----------
+  // 外部APIの代わりに、data.js のダミーの書誌データから探す
+  const catalog = () => {
+    const seen = new Set();
+    return D.books.concat(D.candidates, D.catalogExtras).filter((x) => {
+      if (!x.isbn || seen.has(x.isbn)) return false;
+      seen.add(x.isbn);
+      return true;
+    });
+  };
+  const registeredBook = (isbn) => (isbn ? D.books.find((b) => b.isbn === isbn) : null);
+  const VOL_RE = /[（(]\s*(\d+)\s*[)）]\s*$/;
+  const extractVolume = (title) => { const m = title.match(VOL_RE); return m ? Number(m[1]) : null; };
+  const stripVolume = (title) => title.replace(VOL_RE, '').trim();
+  const formatFromSize = (size) => ({ 1: 'tankobon', 2: 'bunko', 3: 'shinsho', 9: 'comic' }[size] || 'any');
+  // タイトルに既存のシリーズの名前や検索キーワードが含まれ、追う判型も合えば、そのシリーズだと推測する（未確定）
+  // 判型を見るのは、小説のシリーズにコミカライズ版を入れてしまわないため
+  const guessSeries = (item) => {
+    const t = norm(item.title);
+    const fmt = formatFromSize(item.size);
+    return D.series.find((s) => (t.includes(norm(s.keyword)) || t.includes(norm(s.name))) && (s.format === 'any' || s.format === fmt));
+  };
+
+  function newRegState(preset) {
+    return { field: 'title', q: preset ? seriesById(preset.seriesId).keyword : '', comicOnly: false, searched: false, results: [], fetched: 0, preset: preset || null };
+  }
+
+  function runRegSearch() {
+    const r = state.reg;
+    const q = norm(r.q);
+    r.searched = true;
+    r.fetched = 30; // 楽天APIは1回で最大30件
+    r.results = !q ? [] : catalog()
+      .filter((x) => {
+        if (r.comicOnly && x.size !== 9) return false;
+        if (r.field === 'isbn') return x.isbn === q.replace(/-/g, '');
+        return norm(r.field === 'author' ? x.author : x.title).includes(q);
+      })
+      .sort((a, b) => b.salesDate.localeCompare(a.salesDate));
+    renderRegResults(0);
+  }
+
+  function renderRegister() {
+    const r = state.reg;
+    const placeholder = { title: 'タイトルで検索', author: '著者名で検索', isbn: 'ISBN（10桁または13桁）' }[r.field];
+    const preset = r.preset ? seriesById(r.preset.seriesId) : null;
+    $('#main').innerHTML = `
+      <form class="reg-search" id="reg-form">
+        <div class="seg" role="group" aria-label="検索する項目">${[['title', 'タイトル'], ['author', '著者'], ['isbn', 'ISBN']]
+          .map(([v, l]) => `<button type="button" data-action="reg-field" data-v="${v}" aria-pressed="${r.field === v}">${l}</button>`).join('')}</div>
+        <label class="search">${svg(ICON.search, 18)}<input id="reg-q" type="search" placeholder="${placeholder}" value="${esc(r.q)}" autocomplete="off"${r.field === 'isbn' ? ' inputmode="numeric"' : ''}></label>
+        <button class="btn btn-primary" type="submit">検索</button>
+        <label class="check"><input type="checkbox" id="reg-comic"${r.comicOnly ? ' checked' : ''}>コミックのみ</label>
+      </form>
+      ${preset ? `<div class="carry"><span>シリーズ「${esc(preset.name)}」の本として登録します${r.preset.vol != null ? `（${r.preset.vol}巻）` : ''}。登録が終わるとシリーズページに戻ります</span><button class="btn btn-ghost btn-sm" data-action="reg-preset-off">解除</button></div>` : ''}
+      <div class="shelf-sub"><span id="reg-count"></span><span class="sub-tools"><button class="btn btn-ghost btn-sm" data-action="open-manual">見つからないときは手で入力</button>${viewSeg('register')}</span></div>
+      <div id="list-box"></div>
+      <div id="list-more"></div>`;
+    renderRegResults(0);
+  }
+
+  // minShown：検索結果を作り直すときに、表示済みの件数を保つ
+  function renderRegResults(minShown) {
+    if (state.screen !== 'register' || !$('#list-box')) return;
+    const r = state.reg;
+    const all = r.results;
+    $('#reg-count').textContent = r.searched && all.length ? `${all.length}件見つかりました` : '';
+    startPager({
+      key: 'register',
+      entries: all.slice(0, r.fetched),
+      render: resultHTML,
+      empty: regEmptyHTML,
+      fetchMore: r.fetched < all.length ? (p) => {
+        r.fetched = Math.min(all.length, r.fetched + 30);
+        p.entries = all.slice(0, r.fetched);
+        if (r.fetched >= all.length) p.fetchMore = null;
+      } : null,
+    }, minShown);
+  }
+
+  function regEmptyHTML() {
+    const r = state.reg;
+    if (!r.searched || !r.q.trim()) return '<div class="empty"><p>タイトル・著者・ISBNで探して、登録する本を選びます</p></div>';
+    return `<div class="empty"><p>「${esc(r.q)}」に一致する本は見つかりませんでした</p>
+      <button class="btn" data-action="open-manual">手で入力して登録</button></div>`;
+  }
+
+  function resultHTML(item) {
+    const reg = registeredBook(item.isbn);
+    // 登録済みの本を押したら、新しく登録せずにブックページを開く（要件定義書 3.1）
+    const attrs = reg ? `data-action="open-book" data-id="${reg.id}"` : `data-action="open-reg" data-isbn="${item.isbn}"`;
+    const meta = `${esc(item.author)}・${LABEL.size[item.size] || 'その他'}・${fmtDate(item.salesDate)}`;
+    if (state.view.register === 'grid') {
+      return `<button class="tile" ${attrs}>
+          <span class="tile-cover">${coverHTML(item, 'md')}${reg ? '<span class="badge-count">登録済み</span>' : ''}</span>
+          <span class="tile-title">${esc(item.title)}</span>
+          <span class="tile-meta"><span>${meta}</span></span>
+        </button>`;
+    }
+    return `<button class="rrow" ${attrs}>
+        <span class="r-title">${esc(item.title)}${reg ? '<span class="tag-registered">登録済み</span>' : ''}</span>
+        <span class="r-meta">${meta}</span>
+      </button>`;
+  }
+
+  // 登録内容の初期値。シリーズページ・ブックページの［＋］から来たときは、そのシリーズと巻数を入れる（要件定義書 4.3）
+  function regDraft(item) {
+    const preset = state.reg.preset;
+    const hit = preset ? seriesById(preset.seriesId) : item ? guessSeries(item) : null;
+    const vol = preset && preset.vol != null ? preset.vol : item ? extractVolume(item.title) : null;
+    return {
+      seriesMode: hit ? 'existing' : item && vol != null ? 'new' : 'none',
+      seriesId: hit ? hit.id : null,
+      newName: item ? stripVolume(item.title) : '',
+      tracking: hit ? hit.tracking : true,
+      format: hit ? hit.format : item ? formatFromSize(item.size) : 'any',
+      volume: vol ?? '',
+      // APIで探した本の初期値は「購入予定」。手で入力する本は初期値なしで必須（要件定義書 3.1）
+      purchase: item ? 'planned' : null,
+      read: null, media: null, store: null, tags: [],
+      title: '', author: '', publisher: '', salesDate: '', size: '', isbn: '', coverUrl: null,
+    };
+  }
+
+  function regFormHTML(L) {
+    const d = L.draft;
+    const item = L.item;
+    const stores = D.tags.filter((t) => t.kind === 'store');
+    const generals = D.tags.filter((t) => t.kind === 'general');
+    const choices = (field, labels) => `<div class="choice">${Object.entries(labels).map(([v, l]) => choiceBtn(field, v, l, d[field] === v)).join('')}</div>`;
+    const req = '<span class="req">必須</span>';
+    const top = item
+      ? `<div class="reg-top">${coverHTML(item, 'sm')}<div>
+          <div class="cand-title">${esc(item.title)}</div>
+          <div class="cand-meta"><span>${esc(item.author)}</span><span class="label-cat">${LABEL.size[item.size] || 'その他'}</span><span>${esc(item.salesDateRaw)}</span></div>
+        </div></div>`
+      : `<p class="edit-note">外部APIで見つからない本を、手で入力して登録します。この本は自分だけのデータになります。</p>
+        <label class="field"><span class="field-label">タイトル${req}</span><input class="input" data-field="title" value="${esc(d.title)}"></label>
+        ${textField('著者', 'author', d.author)}
+        ${textField('出版社', 'publisher', d.publisher)}
+        <label class="field"><span class="field-label">発売日</span><input class="input" type="date" data-field="salesDate" value="${esc(d.salesDate)}" style="max-width:200px"></label>
+        <div class="field"><span class="field-label">判型</span><select class="select" data-field="size"><option value="">わからない</option>${Object.entries(LABEL.size).map(([v, l]) => `<option value="${v}"${String(d.size) === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        ${textField('ISBN', 'isbn', d.isbn, 'なければ空欄でかまいません')}
+        <div class="field"><span class="field-label">表紙の画像</span>
+          <div class="cover-pick">${d.coverUrl ? coverHTML({ coverUrl: d.coverUrl }, 'sm') : ''}<input type="file" accept="image/*" data-field="coverUrl"></div>
+          <span class="none" style="font-size:12px">任意。なければタイトルを書いたダミーの表紙を出します</span>
+        </div>`;
+    const hasSeries = d.seriesMode !== 'none';
+    return `${top}
+      <div class="section-head"><h3>シリーズ</h3></div>
+      ${choices('seriesMode', { existing: '既存のシリーズ', new: '新しく作る', none: 'なし' })}
+      <div style="margin-top:12px">
+        ${d.seriesMode === 'existing' ? `<div class="field"><select class="select" data-field="seriesId"><option value="">選んでください</option>${D.series.map((s) => `<option value="${s.id}"${d.seriesId === s.id ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>` : ''}
+        ${d.seriesMode === 'new' ? textField('シリーズの表示名', 'newName', d.newName) : ''}
+        ${hasSeries ? `
+          <label class="field"><span class="field-label">巻数</span><input class="input" type="number" min="0" step="1" inputmode="numeric" data-field="volume" value="${esc(d.volume)}" style="max-width:120px"></label>
+          <div class="field"><span class="field-label">新刊を追う</span><div class="toggle-row"><button class="toggle" data-action="set-field" data-field="tracking" data-v="${!d.tracking}" aria-pressed="${d.tracking}" aria-label="新刊を追う"></button><span>${d.tracking ? '追う' : '追わない'}</span></div></div>
+          <div class="field"><span class="field-label">追う判型</span>${choices('format', LABEL.format)}</div>
+          ${d.seriesMode === 'existing' ? '<p class="none" style="margin:-8px 0 16px;font-size:12px">「新刊を追う」と「追う判型」は、シリーズの設定として保存されます</p>' : ''}` : ''}
+      </div>
+      <div class="section-head"><h3>ステータス</h3></div>
+      <div class="field"><span class="field-label">購入状況${item ? '' : req}</span>${choices('purchase', LABEL.purchase)}</div>
+      ${d.purchase === 'purchased' ? `
+        <div class="field"><span class="field-label">読書状態</span>${choices('read', LABEL.read)}</div>
+        <div class="field"><span class="field-label">媒体${req}</span>${choices('media', LABEL.media)}</div>
+        <div class="field"><span class="field-label">購入場所${req}</span>
+          <select class="select" data-field="store"><option value="">選んでください</option>${stores.map((t) => `<option value="${t.id}"${d.store === t.id ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+        </div>` : ''}
+      <div class="field"><span class="field-label">タグ</span><div class="choice">${generals.map((t) => `<button class="chip" data-action="toggle-tag" data-id="${t.id}" aria-pressed="${d.tags.includes(t.id)}">${esc(t.name)}</button>`).join('')}</div></div>
+      <div class="form-btns"><button class="btn" data-action="close-top">キャンセル</button><button class="btn btn-primary" data-action="do-register">登録</button></div>`;
+  }
+
+  // 登録が終わったら、［＋］を押した画面（シリーズページ・ブックページ）に戻る
+  function returnTo(back) {
+    state.reg = newRegState(null);
+    navigate('shelf');
+    openLayer({ type: 'series', id: back.seriesId });
+    if (back.bookId && bookById(back.bookId)) openLayer({ type: 'book', id: back.bookId });
   }
 
   // ---------- 本棚 ----------
@@ -305,8 +502,8 @@
         <button class="btn" data-action="open-filter" id="filter-btn">${svg(ICON.filter, 16)}<span></span></button>
       </div>
       <div class="shelf-sub"><span id="shelf-count"></span><button class="btn btn-ghost btn-sm" data-action="bulk-search">全体一括で新刊を検索</button></div>
-      <div id="shelf-box"></div>
-      <div id="shelf-more"></div>`;
+      <div id="list-box"></div>
+      <div id="list-more"></div>`;
     updateFilterButton();
     updateShelfItems(false);
   }
@@ -318,23 +515,34 @@
 
   // keep が true なら、表示済みの件数を保つ（編集したあとにスクロール位置を崩さないため）
   function updateShelfItems(keep) {
-    const box = $('#shelf-box');
-    if (!box) return;
-    const prev = state.shelfShown;
-    state.entries = shelfEntries();
-    state.shelfShown = 0;
-    state.loading = false;
-    $('#shelf-count').textContent = `${state.entries.length}件`;
-    $('#shelf-more').innerHTML = '';
-    if (!state.entries.length) {
+    if (!$('#list-box') || state.screen !== 'shelf') return;
+    const prev = state.pager ? state.pager.shown : 0;
+    const entries = shelfEntries();
+    $('#shelf-count').textContent = `${entries.length}件`;
+    startPager({
+      key: 'shelf',
+      entries,
+      render: (e) => (state.view.shelf === 'grid' ? entryTile(e) : entryRow(e)),
+      empty: emptyHTML,
+      head: '<div class="list-head"><span>タイトル</span><span>著者</span><span>巻数</span><span>発売日</span><span>購入状況</span><span>評価</span><span>追跡</span><span>前回の確認日</span><span>候補</span></div>',
+    }, keep ? prev : 0);
+  }
+
+  // ---------- 少しずつ表示する一覧（本棚、本の登録の検索結果） ----------
+  // 一覧は #list-box、読み込み中の表示は #list-more に出す。同時に出す一覧は1つだけ
+  function startPager(p, minShown) {
+    const box = $('#list-box');
+    state.pager = Object.assign({ shown: 0, loading: false, fetchMore: null }, p);
+    $('#list-more').innerHTML = '';
+    if (!p.entries.length) {
       box.className = '';
-      box.innerHTML = emptyHTML();
+      box.innerHTML = p.empty();
       return;
     }
-    const grid = state.view.shelf === 'grid';
+    const grid = state.view[p.key] === 'grid';
     box.className = grid ? 'grid' : 'list';
-    box.innerHTML = grid ? '' : '<div class="list-head"><span>タイトル</span><span>著者</span><span>巻数</span><span>発売日</span><span>購入状況</span><span>評価</span><span>追跡</span><span>前回の確認日</span><span>候補</span></div>';
-    appendShelf(keep ? Math.max(prev, perScreen() * 2) : perScreen() * 2);
+    box.innerHTML = grid ? '' : p.head || '';
+    appendItems(Math.max(minShown || 0, perScreen() * 2));
     checkMore();
   }
 
@@ -349,9 +557,9 @@
 
   // 1画面に入る件数。グリッドは段単位で数える（要件定義書 4.6）
   function perScreen() {
-    const box = $('#shelf-box');
+    const box = $('#list-box');
     const vh = window.innerHeight;
-    if (state.view.shelf === 'grid') {
+    if (state.view[state.pager.key] === 'grid') {
       const cols = getComputedStyle(box).gridTemplateColumns.split(' ').filter(Boolean).length || 3;
       const tileH = (box.clientWidth / cols) * 1.5 + 48;
       return cols * Math.max(1, Math.round(vh / tileH));
@@ -359,38 +567,41 @@
     return Math.max(1, Math.round(vh / (box.clientWidth >= 760 ? 50 : 66)));
   }
 
-  function appendShelf(n) {
-    const end = Math.min(state.entries.length, state.shelfShown + n);
-    const html = state.entries.slice(state.shelfShown, end).map((e) => (state.view.shelf === 'grid' ? entryTile(e) : entryRow(e))).join('');
-    $('#shelf-box').insertAdjacentHTML('beforeend', html);
-    state.shelfShown = end;
+  function appendItems(n) {
+    const p = state.pager;
+    const end = Math.min(p.entries.length, p.shown + n);
+    $('#list-box').insertAdjacentHTML('beforeend', p.entries.slice(p.shown, end).map(p.render).join(''));
+    p.shown = end;
   }
 
   // まだ見ていない分が画面1枚分を切ったら、次の2枚分を読み込む
   function checkMore() {
-    if (state.screen !== 'shelf' || state.loading || state.shelfShown >= state.entries.length) return;
-    const box = $('#shelf-box');
-    if (!box) return;
+    const p = state.pager;
+    const box = $('#list-box');
+    if (!p || !box || p.loading) return;
+    if (p.shown >= p.entries.length && !p.fetchMore) return;
     if (box.getBoundingClientRect().bottom - window.innerHeight < window.innerHeight) loadMore();
   }
 
   function loadMore() {
-    state.loading = true;
-    const entries = state.entries;
-    $('#shelf-more').innerHTML = skeletonHTML();
+    const p = state.pager;
+    p.loading = true;
+    $('#list-more').innerHTML = skeletonHTML();
+    // 表示しきったら、次の分を取得する（本の登録では楽天APIの次の30件にあたる）
+    if (p.shown >= p.entries.length) p.fetchMore(p);
     // 実際の通信の待ち時間に似せて、少し遅らせる
     setTimeout(() => {
-      if (state.entries !== entries || !$('#shelf-more')) return; // 途中で条件が変わったら捨てる
-      state.loading = false;
-      $('#shelf-more').innerHTML = '';
-      appendShelf(perScreen() * 2);
+      if (state.pager !== p || !$('#list-more')) return; // 途中で条件が変わったら捨てる
+      p.loading = false;
+      $('#list-more').innerHTML = '';
+      appendItems(perScreen() * 2);
       checkMore();
     }, 300);
   }
 
   function skeletonHTML() {
-    if (state.view.shelf === 'grid') {
-      const cols = getComputedStyle($('#shelf-box')).gridTemplateColumns.split(' ').filter(Boolean).length || 3;
+    if (state.view[state.pager.key] === 'grid') {
+      const cols = getComputedStyle($('#list-box')).gridTemplateColumns.split(' ').filter(Boolean).length || 3;
       return `<div class="grid" style="margin-top:16px">${'<div class="tile skel"><div class="cover"></div><span class="skel-bar" style="width:60%"></span></div>'.repeat(cols)}</div>`;
     }
     return `<div class="list" style="margin-top:8px">${'<div class="row skel"><span class="c-title"><span class="skel-bar" style="width:50%;height:14px"></span></span><span class="c-vol"><span class="skel-bar" style="width:40px"></span></span></div>'.repeat(2)}</div>`;
@@ -502,6 +713,9 @@
     const depth = (history.state && history.state.depth) || 0;
     while (state.layers.length > depth) unmountTop();
     syncChrome();
+    const after = state.afterPop;
+    state.afterPop = null;
+    if (after) after();
   });
   const closeTop = () => { if (state.layers.length) history.back(); };
   const closeAll = () => { if (state.layers.length) history.go(-state.layers.length); };
@@ -527,8 +741,16 @@
 
   function layerInner(L, i) {
     const mode = layerMode();
-    const entity = L.type === 'series' ? seriesById(L.id) : bookById(L.id);
     const backIcon = i > 0 ? ICON.back : ICON.close;
+    if (L.type === 'reg' || L.type === 'manual') {
+      return `${mode === 'sheet' ? '<div class="sheet-handle" data-drag></div>' : ''}
+        <header class="layer-head"${mode === 'sheet' ? ' data-drag' : ''}>
+          <button class="icon-btn" data-action="close-top" aria-label="閉じる">${svg(backIcon, 22)}</button>
+          <h2>${L.type === 'reg' ? '登録内容の入力' : '手で入力して登録'}</h2>
+        </header>
+        <div class="layer-body">${regFormHTML(L)}</div>`;
+    }
+    const entity = L.type === 'series' ? seriesById(L.id) : bookById(L.id);
     const title = !entity ? '' : L.edit ? (L.type === 'series' ? 'シリーズ情報の編集' : 'ブックページの編集') : L.type === 'series' ? entity.name : entity.title;
     const head = `${mode === 'sheet' ? '<div class="sheet-handle" data-drag></div>' : ''}
       <header class="layer-head"${mode === 'sheet' ? ' data-drag' : ''}>
@@ -688,8 +910,10 @@
     if (d.purchase !== 'purchased') return;
     if (!d.read) d.read = 'tsundoku';
     if (!d.media || !d.store) {
+      // 本の登録で「新しく作る」「なし」を選んでいるときは、同じシリーズの本がない
+      const sid = d.seriesMode && d.seriesMode !== 'existing' ? null : d.seriesId;
       const last = D.books
-        .filter((b) => d.seriesId && b.seriesId === d.seriesId && b.id !== d.id && b.purchase === 'purchased')
+        .filter((b) => sid && b.seriesId === sid && b.id !== d.id && b.purchase === 'purchased')
         .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))[0];
       d.media = d.media || (last ? last.media : 'paper');
       d.store = d.store || (last ? last.store : null);
@@ -699,11 +923,13 @@
   // データを変えたあとに、開いているページと本棚を作り直す
   function afterDataChange() {
     state.layers.forEach((L, i) => {
+      if (L.type === 'reg' || L.type === 'manual') return; // 入力中のフォームは作り直さない
       const exists = L.type === 'series' ? seriesById(L.id) : bookById(L.id);
       if (exists) refreshLayer(i);
     });
     renderSidebar();
     if (state.screen === 'shelf') updateShelfItems(true);
+    if (state.screen === 'register') renderRegResults(state.pager ? state.pager.shown : 0);
   }
 
   // ---------- ダイアログ・トースト ----------
@@ -742,13 +968,9 @@
     'drawer-close'() { $('#app').classList.remove('drawer-open'); },
 
     nav(el) {
-      closeAll();
-      state.screen = el.dataset.screen;
-      $('#app').classList.remove('drawer-open');
-      renderSidebar();
-      renderTopbar();
-      renderScreen();
-      window.scrollTo(0, 0);
+      // サイドメニューから本の登録を開いたときは、初期値なし（要件定義書 4.3）
+      if (el.dataset.screen === 'register') state.reg = newRegState(null);
+      navigate(el.dataset.screen);
     },
 
     theme(el) {
@@ -770,6 +992,7 @@
       pref.set(`mock.view.${screen}`, v);
       document.querySelectorAll(`[data-action="view"][data-screen="${screen}"]`).forEach((b) => b.setAttribute('aria-pressed', b.dataset.v === v));
       if (screen === 'shelf') updateShelfItems(false);
+      else if (screen === 'register') renderRegResults(0);
       else state.layers.forEach((L, i) => { if (L.type === 'series' && !L.edit) refreshLayer(i); });
     },
 
@@ -854,10 +1077,85 @@
 
     'search-new'() { toast('新刊を検索しました（モックでは結果は変わりません）'); },
 
+    // シリーズページ・ブックページの［＋］：そのシリーズ（と次の巻数）を初期値にして本の登録を開く
     'add-book'(el) {
-      const s = seriesById(el.dataset.series);
+      const L = state.layers[depthOf(el)];
       const vol = el.dataset.vol;
-      toast(`本の登録画面を開きます（初期値：${s.name}${vol ? `、${vol}巻` : ''}）。本の登録はモックの対象外です`);
+      state.reg = newRegState({
+        seriesId: el.dataset.series,
+        vol: vol ? Number(vol) : null,
+        returnTo: { seriesId: el.dataset.series, bookId: L && L.type === 'book' ? L.id : null },
+      });
+      navigate('register');
+      runRegSearch(); // シリーズの検索キーワードで最初から探しておく（未確定）
+    },
+
+    'reg-field'(el) {
+      state.reg.field = el.dataset.v;
+      state.reg.q = $('#reg-q').value;
+      renderRegister();
+      if (state.reg.searched && state.reg.q.trim()) runRegSearch();
+    },
+    'reg-preset-off'() {
+      state.reg.preset = null;
+      renderRegister();
+    },
+    'open-reg'(el) {
+      const item = catalog().find((x) => x.isbn === el.dataset.isbn);
+      if (!item) return;
+      openFromShelf({ type: 'reg', id: item.isbn, item, draft: regDraft(item) });
+    },
+    'open-manual'() {
+      openFromShelf({ type: 'manual', id: 'manual', item: null, draft: regDraft(null) });
+    },
+
+    'do-register'(el) {
+      const L = state.layers[depthOf(el)];
+      const d = L.draft;
+      const manual = L.type === 'manual';
+      const isbn = manual ? d.isbn.replace(/[-\s]/g, '') : L.item.isbn;
+      if (manual && !d.title.trim()) { toast('タイトルを入れてください'); return; }
+      if (manual && isbn && registeredBook(isbn)) { toast('このISBNの本は、もう登録しています'); return; }
+      if (!d.purchase) { toast('購入状況を選んでください'); return; }
+      if (d.purchase === 'purchased' && (!d.media || !d.store)) { toast('媒体と購入場所を選んでください'); return; }
+      if (d.seriesMode === 'existing' && !d.seriesId) { toast('シリーズを選んでください'); return; }
+      if (d.seriesMode === 'new' && !d.newName.trim()) { toast('シリーズの表示名を入れてください'); return; }
+
+      const bib = manual
+        ? {
+          title: d.title.trim(), author: d.author.trim(), publisher: d.publisher.trim(), size: Number(d.size) || null,
+          salesDate: d.salesDate || '', salesDateRaw: d.salesDate ? fmtDate(d.salesDate) : '不明', isbn: isbn || null,
+          color: '#6b6b6b', coverUrl: d.coverUrl, source: 'manual',
+        }
+        : (({ title, author, publisher, size, salesDate, salesDateRaw, color, source }) => ({ title, author, publisher, size, salesDate, salesDateRaw, isbn, color, source }))(L.item);
+
+      let sid = null;
+      if (d.seriesMode === 'new') {
+        sid = `s-new-${Date.now()}`;
+        const name = d.newName.trim();
+        D.series.push({ id: sid, name, kana: name, keyword: name, author: bib.author, format: d.format, tracking: d.tracking, lastChecked: null, color: bib.color });
+      } else if (d.seriesMode === 'existing') {
+        sid = d.seriesId;
+        Object.assign(seriesById(sid), { tracking: d.tracking, format: d.format });
+      }
+      const purchased = d.purchase === 'purchased';
+      D.books.push(Object.assign(bib, {
+        id: `b-r-${Date.now()}`,
+        seriesId: sid,
+        volume: sid && d.volume !== '' ? Number(d.volume) : null,
+        purchase: d.purchase,
+        read: purchased ? d.read || 'tsundoku' : null,
+        media: purchased ? d.media : null,
+        store: purchased ? d.store : null,
+        rating: null, memo: '', tags: d.tags.slice(),
+      }));
+      // 新刊候補にあった本なら、候補を「追加済み」にする
+      D.candidates.forEach((c) => { if (isbn && c.isbn === isbn && c.state === 'new') c.state = 'added'; });
+
+      const back = state.reg.preset && state.reg.preset.returnTo;
+      toast(`「${bib.title}」を登録しました`);
+      state.afterPop = back ? () => returnTo(back) : afterDataChange;
+      closeTop();
     },
 
     'cand-add'(el) {
@@ -1011,17 +1309,45 @@
       state.qTimer = setTimeout(() => updateShelfItems(false), 150);
       return;
     }
-    if (t.dataset.field) {
-      const L = state.layers[depthOf(t)];
-      if (L && L.draft) L.draft[t.dataset.field] = t.dataset.field === 'seriesId' ? t.value || null : t.value;
+    if (t.id === 'reg-q') {
+      state.reg.q = t.value;
+      return;
+    }
+    if (t.dataset.field && t.type !== 'file') {
+      const i = depthOf(t);
+      const L = state.layers[i];
+      if (!L || !L.draft) return;
+      L.draft[t.dataset.field] = t.dataset.field === 'seriesId' ? t.value || null : t.value;
+      // 本の登録で既存のシリーズを選んだら、そのシリーズの「新刊を追う」「追う判型」を出す
+      if (t.dataset.field === 'seriesId' && (L.type === 'reg' || L.type === 'manual')) {
+        const s = seriesById(t.value);
+        if (s) Object.assign(L.draft, { tracking: s.tracking, format: s.format });
+        refreshLayer(i);
+      }
     }
   });
 
   document.addEventListener('change', (e) => {
-    if (e.target.id === 'sort') {
-      state.sort = e.target.value;
+    const t = e.target;
+    if (t.id === 'sort') {
+      state.sort = t.value;
       updateShelfItems(false);
+    } else if (t.id === 'reg-comic') {
+      state.reg.comicOnly = t.checked;
+      if (state.reg.searched) runRegSearch();
+    } else if (t.type === 'file' && t.dataset.field === 'coverUrl' && t.files[0]) {
+      // 手で入力する本の表紙。モックではページを開いている間だけ表示する
+      const i = depthOf(t);
+      state.layers[i].draft.coverUrl = URL.createObjectURL(t.files[0]);
+      refreshLayer(i);
     }
+  });
+
+  document.addEventListener('submit', (e) => {
+    if (e.target.id !== 'reg-form') return;
+    e.preventDefault();
+    state.reg.q = $('#reg-q').value;
+    runRegSearch();
   });
 
   document.addEventListener('keydown', (e) => {

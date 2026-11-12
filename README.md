@@ -27,6 +27,7 @@
 ## ドキュメント
 
 - [要件定義書](docs/requirements.md)
+- [実装計画](docs/implementation-plan.md)：本実装までの進め方
 
 ## 利用するデータソース（予定）
 

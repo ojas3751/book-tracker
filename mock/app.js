@@ -307,7 +307,7 @@
   const extractVolume = (title) => { const m = title.match(VOL_RE); return m ? Number(m[1]) : null; };
   const stripVolume = (title) => title.replace(VOL_RE, '').trim();
   const formatFromSize = (size) => ({ 1: 'tankobon', 2: 'bunko', 3: 'shinsho', 9: 'comic' }[size] || 'any');
-  // タイトルに既存のシリーズの名前や検索キーワードが含まれ、追う判型も合えば、そのシリーズだと推測する（未確定）
+  // タイトルに既存のシリーズの名前や検索キーワードが含まれ、追う判型も合えば、そのシリーズだと推測する（要件定義書 3.1）
   // 判型を見るのは、小説のシリーズにコミカライズ版を入れてしまわないため
   const guessSeries = (item) => {
     const t = norm(item.title);
@@ -1087,7 +1087,7 @@
         returnTo: { seriesId: el.dataset.series, bookId: L && L.type === 'book' ? L.id : null },
       });
       navigate('register');
-      runRegSearch(); // シリーズの検索キーワードで最初から探しておく（未確定）
+      runRegSearch(); // シリーズの検索キーワードで最初から探しておく（要件定義書 4.3）
     },
 
     'reg-field'(el) {

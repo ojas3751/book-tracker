@@ -35,3 +35,4 @@ Issue と PR には **種類を1つ**、**領域を1つ以上**付ける。
 
 - [README](README.md) — プロジェクトの概要と現在の状況
 - [要件定義書](docs/requirements.md) — 仕様の正本。決まったことは必ずここに反映する
+- [実装計画](docs/implementation-plan.md) — 本実装までの段階と順番。進み具合や決まったことが変わったら直す
